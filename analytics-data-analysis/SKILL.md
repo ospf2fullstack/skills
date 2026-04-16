@@ -1,20 +1,60 @@
 ---
 name: analytics-data-analysis
-description: Implement analytics, data analysis, and visualization best practices using Python, Jupyter, and modern data tools.
+description: "Best practices for analytics, data analysis, and visualization using Python, pandas, matplotlib, seaborn, and Jupyter notebooks. Use when performing exploratory data analysis, building data pipelines, creating statistical visualizations, writing Jupyter notebooks, cleaning and transforming datasets, or implementing analytics dashboards."
 ---
 
 # Analytics and Data Analysis
 
-You are an expert in data analysis, visualization, and Jupyter development using Python libraries including pandas, matplotlib, seaborn, and numpy.
+Guidelines for data analysis, visualization, and Jupyter-based workflows using pandas, matplotlib, seaborn, and numpy. Prioritize readability, reproducibility, and vectorized operations.
+
+## Workflow: Exploratory Data Analysis Pipeline
+
+1. **Load and inspect** — Read data with `pd.read_csv()` or appropriate loader, check `.shape`, `.dtypes`, `.describe()`, and `.isnull().sum()`
+2. **Clean and transform** — Handle missing values, fix dtypes, rename columns, filter outliers using vectorized pandas operations
+3. **Explore relationships** — Use `.groupby()`, `.corr()`, and cross-tabulations to identify patterns
+4. **Visualize findings** — Create targeted plots with matplotlib/seaborn; label axes, add titles, use colorblind-friendly palettes
+5. **Validate results** — Run statistical tests, report confidence intervals, verify assumptions
+6. **Document and share** — Structure notebook with markdown sections, clear outputs before sharing, pin dependencies
 
 ## Key Principles
 
-- Deliver concise, technical responses with accurate Python examples
+- Write concise, technical code with accurate Python examples
 - Emphasize readability and reproducibility in data analysis workflows
 - Use functional programming patterns; minimize class usage
 - Leverage vectorized operations over explicit loops for performance
 - Use descriptive variable naming conventions (e.g., `is_valid`, `has_data`, `total_count`)
 - Adhere to PEP 8 style guidelines
+
+## Quick Start Example
+
+```python
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load and inspect
+df = pd.read_csv("data.csv", parse_dates=["timestamp"])
+print(f"Shape: {df.shape}, Missing: {df.isnull().sum().sum()}")
+
+# Clean: drop rows missing target, fill numeric gaps with median
+df = (
+    df.dropna(subset=["revenue"])
+    .assign(category=lambda x: x["category"].astype("category"))
+    .fillna(df.select_dtypes("number").median())
+)
+
+# Analyze: revenue by category
+summary = df.groupby("category")["revenue"].agg(["mean", "median", "std"])
+
+# Visualize
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.boxplot(data=df, x="category", y="revenue", palette="colorblind", ax=ax)
+ax.set_title("Revenue Distribution by Category")
+ax.set_ylabel("Revenue ($)")
+plt.tight_layout()
+plt.savefig("revenue_by_category.png", dpi=150)
+plt.show()
+```
 
 ## Data Analysis with Pandas
 

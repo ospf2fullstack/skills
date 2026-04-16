@@ -1,11 +1,11 @@
 ---
 name: kafka-development
-description: Best practices and guidelines for Apache Kafka event streaming and distributed messaging
+description: "Best practices for Apache Kafka event streaming and distributed messaging. Use when building event-driven architectures, implementing producer/consumer patterns, designing topic partitioning strategies, setting up Kafka Streams, configuring schema registries, or integrating change data capture pipelines."
 ---
 
 # Kafka Development
 
-You are an expert in Apache Kafka event streaming and distributed messaging systems. Follow these best practices when building Kafka-based applications.
+This skill provides best practices for Apache Kafka event streaming and distributed messaging systems. Apply these guidelines when building Kafka-based applications.
 
 ## Core Principles
 
@@ -13,6 +13,16 @@ You are an expert in Apache Kafka event streaming and distributed messaging syst
 - Unlike traditional pub/sub, Kafka uses a pull model - consumers pull messages from partitions
 - Design for scalability, durability, and exactly-once semantics where needed
 - Leave NO todos, placeholders, or missing pieces in the implementation
+
+## Workflow: Setting Up a Kafka Producer-Consumer Pipeline
+
+1. **Define the topic** — choose a descriptive name, set partition count based on expected consumer parallelism, and configure retention and replication factor.
+2. **Design the message schema** — register an Avro or JSON schema in Schema Registry; ensure backward compatibility from the start.
+3. **Implement the producer** — configure `acks=all`, enable idempotence, select a partition key that distributes evenly, and add error handling with retry logic.
+4. **Implement the consumer** — set `enable.auto.commit=false`, pick an appropriate `auto.offset.reset` policy, process messages idempotently, and commit offsets only after successful processing.
+5. **Add observability** — instrument producer send-rate, consumer lag, and broker under-replicated-partitions; propagate trace context in message headers.
+6. **Test end-to-end** — use Testcontainers or an embedded Kafka broker to verify the full produce-consume-commit cycle, including failure and rebalance scenarios.
+7. **Deploy and monitor** — roll out with lag alerts, dead-letter-topic routing for persistent failures, and dashboards for key broker and client metrics.
 
 ## Architecture Overview
 
@@ -79,6 +89,34 @@ enable.idempotence=true # Prevent duplicate messages on retry
 - Log and alert on send failures
 - Consider dead letter topics for messages that fail repeatedly
 
+### Example: Java Producer with Idempotence and Error Handling
+
+```java
+Properties props = new Properties();
+props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+props.put(ProducerConfig.ACKS_CONFIG, "all");
+props.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG, true);
+props.put(ProducerConfig.RETRIES_CONFIG, Integer.MAX_VALUE);
+props.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+
+try (KafkaProducer<String, String> producer = new KafkaProducer<>(props)) {
+    ProducerRecord<String, String> record =
+        new ProducerRecord<>("orders", "order-123", "{\"item\":\"widget\",\"qty\":5}");
+
+    producer.send(record, (metadata, exception) -> {
+        if (exception != null) {
+            log.error("Send failed for key=order-123", exception);
+            // Route to dead-letter topic or alert
+        } else {
+            log.info("Delivered to {}-{} offset {}",
+                metadata.topic(), metadata.partition(), metadata.offset());
+        }
+    });
+}
+```
+
 ### Partitioner
 
 - Default: hash of key determines partition (null key = round-robin)
@@ -107,6 +145,35 @@ enable.idempotence=true # Prevent duplicate messages on retry
 - Handle out-of-order messages across partitions if needed
 - Implement idempotent processing for at-least-once delivery
 - Consider transactional processing for exactly-once
+
+### Example: Java Consumer with Manual Offset Commit
+
+```java
+Properties props = new Properties();
+props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+props.put(ConsumerConfig.GROUP_ID_CONFIG, "order-processing-group");
+props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+
+try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+    consumer.subscribe(Collections.singletonList("orders"));
+
+    while (running) {
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(500));
+        for (ConsumerRecord<String, String> record : records) {
+            try {
+                processOrder(record.key(), record.value());
+            } catch (Exception e) {
+                log.error("Failed to process offset={} key={}", record.offset(), record.key(), e);
+                publishToDeadLetterTopic(record, e);
+            }
+        }
+        consumer.commitSync(); // Commit only after successful processing
+    }
+}
+```
 
 ### Timeouts and Failures
 
