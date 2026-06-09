@@ -1,11 +1,21 @@
 ---
 name: grpc-development
-description: Best practices and guidelines for building high-performance services with gRPC and Protocol Buffers
+description: "Best practices for building high-performance services with gRPC and Protocol Buffers. Use when designing RPC services, defining protobuf schemas, implementing streaming APIs, setting up gRPC interceptors, or building cross-language service communication."
 ---
 
 # gRPC Development
 
-You are an expert in gRPC and Protocol Buffers development. Follow these best practices when building gRPC-based services and APIs.
+This skill covers best practices for building gRPC-based services and APIs using Protocol Buffers, including service design, streaming patterns, interceptors, security, and observability.
+
+## Workflow for Building a gRPC Service
+
+1. **Define the service contract** — Write `.proto` files with service definitions, RPC methods, and message types following the style and naming conventions below.
+2. **Generate language stubs** — Run `protoc` with the appropriate language plugin (e.g., `protoc-gen-go-grpc`, `grpcio-tools`) to produce server and client code.
+3. **Implement the server** — Create handler functions for each RPC method, register them with a gRPC server, and configure TLS, interceptors, and health checks.
+4. **Implement the client** — Create a channel to the server, instantiate the generated client stub, and call RPC methods with proper deadlines and error handling.
+5. **Add interceptors** — Wire in server and client interceptors for logging, authentication, metrics, and tracing.
+6. **Write tests** — Unit-test handlers with mocked dependencies; integration-test with a real gRPC connection.
+7. **Deploy and observe** — Enable distributed tracing (OpenTelemetry), structured logging, and metrics dashboards before going to production.
 
 ## Core Principles
 
@@ -61,6 +71,141 @@ You are an expert in gRPC and Protocol Buffers development. Follow these best pr
 - **Server Streaming**: Client sends request, server responds with stream of messages
 - **Client Streaming**: Client sends stream of messages, server responds with single response
 - **Bidirectional Streaming**: Both sides send streams of messages
+
+### Example: Proto Definition
+
+```proto
+syntax = "proto3";
+
+package order.v1;
+
+option go_package = "gen/order/v1;orderv1";
+
+// OrderService manages customer orders.
+service OrderService {
+  // Creates a new order and returns the created resource.
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  // Streams real-time status updates for an order.
+  rpc WatchOrder(WatchOrderRequest) returns (stream OrderStatus);
+}
+
+message CreateOrderRequest {
+  string customer_id = 1;
+  repeated OrderItem items = 2;
+}
+
+message CreateOrderResponse {
+  string order_id = 1;
+  OrderStatus status = 2;
+}
+
+message WatchOrderRequest {
+  string order_id = 1;
+}
+
+message OrderItem {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message OrderStatus {
+  string order_id = 1;
+  OrderState state = 2;
+  string updated_at = 3;
+}
+
+enum OrderState {
+  ORDER_STATE_UNSPECIFIED = 0;
+  ORDER_STATE_CREATED = 1;
+  ORDER_STATE_PROCESSING = 2;
+  ORDER_STATE_SHIPPED = 3;
+  ORDER_STATE_DELIVERED = 4;
+}
+```
+
+### Example: Go Server Implementation
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	pb "example.com/gen/order/v1"
+)
+
+type orderServer struct {
+	pb.UnimplementedOrderServiceServer
+}
+
+func (s *orderServer) CreateOrder(ctx context.Context, req *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
+	if req.GetCustomerId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "customer_id is required")
+	}
+	orderID := "ord-" + time.Now().Format("20060102150405")
+	return &pb.CreateOrderResponse{
+		OrderId: orderID,
+		Status: &pb.OrderStatus{
+			OrderId: orderID,
+			State:   pb.OrderState_ORDER_STATE_CREATED,
+		},
+	}, nil
+}
+
+func (s *orderServer) WatchOrder(req *pb.WatchOrderRequest, stream pb.OrderService_WatchOrderServer) error {
+	for i, state := range []pb.OrderState{
+		pb.OrderState_ORDER_STATE_PROCESSING,
+		pb.OrderState_ORDER_STATE_SHIPPED,
+		pb.OrderState_ORDER_STATE_DELIVERED,
+	} {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		case <-time.After(time.Duration(i) * time.Second):
+			if err := stream.Send(&pb.OrderStatus{
+				OrderId:   req.GetOrderId(),
+				State:     state,
+				UpdatedAt: time.Now().Format(time.RFC3339),
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func main() {
+	lis, err := net.Listen("tcp", ":50051")
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	srv := grpc.NewServer(
+		grpc.UnaryInterceptor(loggingUnaryInterceptor),
+	)
+	pb.RegisterOrderServiceServer(srv, &orderServer{})
+	log.Println("serving on :50051")
+	if err := srv.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+// loggingUnaryInterceptor logs each unary RPC call.
+func loggingUnaryInterceptor(
+	ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+) (any, error) {
+	start := time.Now()
+	resp, err := handler(ctx, req)
+	log.Printf("method=%s duration=%s err=%v", info.FullMethod, time.Since(start), err)
+	return resp, err
+}
+```
 
 ### API Design
 

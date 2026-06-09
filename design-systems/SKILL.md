@@ -1,11 +1,21 @@
 ---
 name: design-systems
-description: Comprehensive design system guidelines for building consistent, accessible, and scalable digital products
+description: "Comprehensive design system guidelines for building consistent, accessible, and scalable component libraries. Use when creating design tokens, building component libraries, implementing design systems, setting up theming architecture, or establishing UI governance processes."
 ---
 
 # Design Systems Best Practices
 
-You are an expert in UI and UX design principles for software development. Apply these guidelines when creating or maintaining design systems.
+Guidelines for creating and maintaining design systems that ensure visual consistency, accessibility compliance, and scalable component architecture across digital products.
+
+## Workflow: Setting Up a Design System
+
+1. **Audit existing UI** — Inventory current components, colors, typography, and spacing across the product to identify inconsistencies and reusable patterns.
+2. **Define design tokens** — Establish primitive tokens (colors, spacing, typography, shadows) as CSS custom properties or a token format (e.g., Style Dictionary) that serves as the single source of truth.
+3. **Build foundational components** — Create atomic components (Button, Input, Text, Icon) that consume design tokens and expose a clear props API with TypeScript types.
+4. **Compose patterns and layouts** — Assemble atomic components into higher-order patterns (forms, cards, navigation) with documented usage guidelines.
+5. **Set up documentation and Storybook** — Configure Storybook with stories for every component variant, state, and accessibility annotation. Publish as a living style guide.
+6. **Integrate testing and governance** — Add visual regression tests (e.g., Chromatic), accessibility linting (e.g., axe-core), and a contribution/review process for new components.
+7. **Ship and iterate** — Publish the library as a versioned package, gather consumer feedback, and run regular accessibility and performance audits.
 
 ## Foundation Elements
 
@@ -170,6 +180,73 @@ You are an expert in UI and UX design principles for software development. Apply
 }
 ```
 
+### Example: React Button Component Using Design Tokens
+
+```tsx
+import React from "react";
+
+interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: "primary" | "secondary" | "danger";
+  size?: "sm" | "md" | "lg";
+  loading?: boolean;
+}
+
+const sizeStyles: Record<string, React.CSSProperties> = {
+  sm: { padding: "var(--space-1) var(--space-2)", fontSize: "var(--font-size-sm)" },
+  md: { padding: "var(--space-2) var(--space-4)", fontSize: "var(--font-size-base)" },
+  lg: { padding: "var(--space-3) var(--space-6)", fontSize: "var(--font-size-lg)" },
+};
+
+export const Button: React.FC<ButtonProps> = ({
+  variant = "primary",
+  size = "md",
+  loading = false,
+  disabled,
+  children,
+  ...props
+}) => (
+  <button
+    style={{
+      ...sizeStyles[size],
+      backgroundColor: `var(--color-${variant}-500)`,
+      color: "var(--color-neutral-100)",
+      borderRadius: "var(--radius-md)",
+      boxShadow: "var(--shadow-sm)",
+      cursor: disabled || loading ? "not-allowed" : "pointer",
+      opacity: disabled ? 0.5 : 1,
+    }}
+    disabled={disabled || loading}
+    aria-busy={loading}
+    {...props}
+  >
+    {loading ? "Loading…" : children}
+  </button>
+);
+```
+
+### Example: Storybook Configuration
+
+```ts
+// .storybook/preview.ts
+import type { Preview } from "@storybook/react";
+import "../src/tokens.css"; // import design tokens globally
+
+const preview: Preview = {
+  parameters: {
+    a11y: { element: "#storybook-root" },
+    backgrounds: {
+      default: "light",
+      values: [
+        { name: "light", value: "#ffffff" },
+        { name: "dark", value: "#1a1a1a" },
+      ],
+    },
+  },
+};
+
+export default preview;
+```
+
 ## Quality Assurance
 
 - Visual regression testing
@@ -179,4 +256,4 @@ You are an expert in UI and UX design principles for software development. Apply
 - Component unit testing
 - Integration testing
 
-Stay current with design system practices and industry standards.
+When evolving the design system, validate changes against WCAG 2.1 AA, run visual regression tests, and ensure token updates propagate correctly across all consuming applications.
